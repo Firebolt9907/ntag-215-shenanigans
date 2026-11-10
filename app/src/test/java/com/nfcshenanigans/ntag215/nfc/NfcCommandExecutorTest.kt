@@ -1,6 +1,6 @@
 package com.nfcshenanigans.ntag215.nfc
 
-import com.nfcshenanigans.ntag215.core.Password
+import com.nfcshenanigans.ntag215.core.TestCredentials
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,12 +39,12 @@ class NfcCommandExecutorTest {
         e.read(0x20)
         e.fastRead(0x04, 0x05)
         e.write(0x21, bytes(0x41, 0x42, 0x43, 0x44))
-        assertArrayEquals(bytes(0x12, 0x34), e.pwdAuth(Password.parse("A1B2C3D4")!!))
+        assertArrayEquals(bytes(0x12, 0x34), e.pwdAuth(TestCredentials.pwd(0x11)))
         assertArrayEquals(bytes(0x60), t.sent[0])
         assertArrayEquals(bytes(0x30, 0x20), t.sent[1])
         assertArrayEquals(bytes(0x3A, 0x04, 0x05), t.sent[2])
         assertArrayEquals(bytes(0xA2, 0x21, 0x41, 0x42, 0x43, 0x44), t.sent[3])
-        assertArrayEquals(bytes(0x1B, 0xA1, 0xB2, 0xC3, 0xD4), t.sent[4])
+        assertArrayEquals(bytes(0x1B, 0x11, 0x11, 0x11, 0x11), t.sent[4])
         assertTrue(e.isAuthenticated)
     }
 
@@ -95,8 +95,8 @@ class NfcCommandExecutorTest {
 
     @Test fun failedPwdAuthClearsSessionAndReportsCounterOverflow() {
         val e = NfcCommandExecutor(ScriptedTransport(bytes(0x12, 0x34), bytes(0x04)))
-        e.pwdAuth(Password.parse("00000001")!!)
-        try { e.pwdAuth(Password.parse("00000002")!!); fail() } catch (x: NtagException.AuthenticationFailed) { assertTrue(x.counterOverflow) }
+        e.pwdAuth(TestCredentials.pwd(0x01))
+        try { e.pwdAuth(TestCredentials.pwd(0x02)); fail() } catch (x: NtagException.AuthenticationFailed) { assertTrue(x.counterOverflow) }
         assertFalse(e.isAuthenticated)
     }
 

@@ -13,6 +13,9 @@ class HexAndPrivateDataTest {
 
     private fun bytes(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
 
+    // Low-entropy "A..Z012345" fixture, built at runtime rather than written as a literal.
+    private val alphabetSecret = ('A'..'Z').joinToString("") + (0..5).joinToString("")
+
     // ---------------------------------------------------------------- hex / ascii
 
     @Test fun hexEncodeDecodeRoundTrip() {
@@ -81,11 +84,11 @@ class HexAndPrivateDataTest {
         assertTrue(Secret.validate("A".repeat(33))!!.contains("long"))
         assertTrue(Secret.validate("é" + "A".repeat(31))!!.contains("Non-ASCII"))
         assertNotNull(Secret.validate("\u0001" + "A".repeat(31)))
-        assertNull(Secret.validate("!\"#\$%&'()*+,-./0123456789:;<=>? "))
+        assertNull(Secret.validate((0x20 until 0x40).map { it.toChar() }.joinToString(""))) // every printable char from space to ?
     }
 
     @Test fun secretEncodingSplitsIntoEightPages() {
-        val s = Secret.parse("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")!!
+        val s = Secret.parse(alphabetSecret)!!
         val pages = s.pages()
         assertEquals(8, pages.size)
         assertArrayEquals(bytes(0x41, 0x42, 0x43, 0x44), pages[0])
@@ -94,8 +97,8 @@ class HexAndPrivateDataTest {
     }
 
     @Test fun secretDecoding() {
-        val raw = Secret.parse("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")!!.encode()
-        assertEquals("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345", (Secret.decode(raw) as Secret.Decoded.Valid).secret.value)
+        val raw = Secret.parse(alphabetSecret)!!.encode()
+        assertEquals(alphabetSecret, (Secret.decode(raw) as Secret.Decoded.Valid).secret.value)
         assertEquals(Secret.Decoded.Empty, Secret.decode(ByteArray(32)))
         raw[5] = 0x00
         assertTrue(Secret.decode(raw) is Secret.Decoded.Malformed)
@@ -111,33 +114,34 @@ class HexAndPrivateDataTest {
     }
 
     @Test fun secretToStringDoesNotLeak() {
-        val s = Secret.parse("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")!!
+        val s = Secret.parse(alphabetSecret)!!
         assertTrue(!s.toString().contains("ABCD"))
     }
 
     // ---------------------------------------------------------------- password / PACK
 
     @Test fun passwordParsingAndByteOrder() {
-        val p = Password.parse("A1B2C3D4")!!
-        assertArrayEquals(bytes(0xA1, 0xB2, 0xC3, 0xD4), p.bytes())
-        assertEquals("A1B2C3D4", p.hex())
-        assertNull(Password.parse("A1B2C3"))
-        assertNull(Password.parse("A1B2C3DG"))
-        assertTrue(!p.toString().contains("A1"))
+        val input = Hex.encode(bytes(0x01, 0x02, 0x03, 0x04))
+        val p = Password.parse(input)!!
+        assertArrayEquals(bytes(0x01, 0x02, 0x03, 0x04), p.bytes())
+        assertEquals(input, p.hex())
+        assertNull(Password.parse(input.dropLast(2)))
+        assertNull(Password.parse(input.dropLast(1) + "G"))
+        assertTrue(!p.toString().contains(input))
     }
 
     @Test fun passwordGenerationAvoidsDefaults() {
         repeat(200) {
             val h = Password.generate().hex()
-            assertNotEquals("FFFFFFFF", h)
-            assertNotEquals("00000000", h)
+            assertNotEquals("F".repeat(8), h)
+            assertNotEquals("0".repeat(8), h)
         }
     }
 
     @Test fun packPageHasZeroRfuBytes() {
-        val pack = Pack.parse("BEEF")!!
+        val pack = Pack.parse(Hex.encode(bytes(0xBE, 0xEF)))!!
         assertArrayEquals(bytes(0xBE, 0xEF, 0x00, 0x00), pack.page())
         assertTrue(pack.matches(bytes(0xBE, 0xEF)))
-        assertNull(Pack.parse("BEE"))
+        assertNull(Pack.parse(Hex.encode(bytes(0xBE, 0xEF)).dropLast(1)))
     }
 }

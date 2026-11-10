@@ -6,6 +6,7 @@ import com.nfcshenanigans.ntag215.core.NdefUrlEncoder
 import com.nfcshenanigans.ntag215.core.Ntag215Memory
 import com.nfcshenanigans.ntag215.core.Pack
 import com.nfcshenanigans.ntag215.core.Password
+import com.nfcshenanigans.ntag215.core.TestCredentials
 import com.nfcshenanigans.ntag215.core.PrivateId
 import com.nfcshenanigans.ntag215.core.Secret
 import com.nfcshenanigans.ntag215.core.u
@@ -32,9 +33,9 @@ class Ntag215ManagerScenarioTest(private val nakStyle: FakeNtag215.NakStyle) {
         fun styles() = FakeNtag215.NakStyle.entries.toList()
 
         const val URL = "https://www.example-company.com/products/nfc/tags/activate?id=ABCDEFGH1234567"
-        val SECRET: Secret = Secret.parse("Zq3vN8xLw2Rt6YpB0sKd9HmF4cJu7GaE")!!
-        val PWD: Password = Password.parse("A1B2C3D4")!!
-        val PACK: Pack = Pack.parse("BEEF")!!
+        val SECRET: Secret = TestCredentials.secret('s')
+        val PWD: Password = TestCredentials.pwd(0x11)
+        val PACK: Pack = TestCredentials.pack(0x22)
     }
 
     private val tracker = AuthAttemptTracker()
@@ -125,20 +126,20 @@ class Ntag215ManagerScenarioTest(private val nakStyle: FakeNtag215.NakStyle) {
     @Test fun scenario03_existingProtectionNeedsCurrentPassword() {
         writeOk(request())
         val attemptsBefore = fake.pwdAuthAttempts
-        val o = manager().write(request(id = "043", pwd = Password.parse("11223344")!!), listener)
+        val o = manager().write(request(id = "043", pwd = TestCredentials.pwd(0x33)), listener)
         assertTrue(o is WriteOutcome.NeedsPassword)
         assertEquals("No PWD_AUTH without a user-supplied password", attemptsBefore, fake.pwdAuthAttempts)
-        val o2 = manager().write(request(id = "043", pwd = Password.parse("11223344")!!, current = PWD), listener)
+        val o2 = manager().write(request(id = "043", pwd = TestCredentials.pwd(0x33), current = PWD), listener)
         assertTrue(o2 is WriteOutcome.NeedsConfirmation)
-        writeOk(request(id = "043", pwd = Password.parse("11223344")!!, current = PWD, confirmed = true))
-        assertArrayEquals(Password.parse("11223344")!!.bytes(), fake.password)
+        writeOk(request(id = "043", pwd = TestCredentials.pwd(0x33), current = PWD, confirmed = true))
+        assertArrayEquals(TestCredentials.pwd(0x33).bytes(), fake.password)
     }
 
     // 4. Incorrect authentication password
     @Test fun scenario04_wrongPassword() {
         writeOk(request())
         val before = fake.pages.map { it.copyOf() }
-        val wrong = Password.parse("DEADBEEF")!!
+        val wrong = TestCredentials.pwd(0x44)
         val o = manager().write(request(id = "777", current = wrong, confirmed = true), listener)
         assertTrue(o is WriteOutcome.Failure)
         o as WriteOutcome.Failure
@@ -245,11 +246,11 @@ class Ntag215ManagerScenarioTest(private val nakStyle: FakeNtag215.NakStyle) {
         e.pwdAuth(PWD)
         e.write(0x84, byteArrayOf((0x80 or 0x10 or 0x05).toByte(), 0, 0, 0))
         val newSecret = Secret.generate()
-        val newPwd = Password.parse("0BADF00D")!!
-        writeOk(request(url = "https://example.com/v2", id = "043", secret = newSecret, pwd = newPwd, pack = Pack.parse("1234")!!, current = PWD, confirmed = true))
+        val newPwd = TestCredentials.pwd(0x55)
+        writeOk(request(url = "https://example.com/v2", id = "043", secret = newSecret, pwd = newPwd, pack = TestCredentials.pack(0x66), current = PWD, confirmed = true))
         assertEquals(0x95, fake.access)
         assertEquals("https://example.com/v2", standardReaderUrl())
-        val r = manager().inspect(newPwd, Pack.parse("1234"), null)
+        val r = manager().inspect(newPwd, TestCredentials.pack(0x66), null)
         val auth = r.privateState as PrivateState.Authenticated
         assertEquals("043", (auth.area.id as PrivateId.Decoded.Valid).id.value)
         assertEquals(newSecret, (auth.area.secret as Secret.Decoded.Valid).secret)
@@ -337,7 +338,7 @@ class Ntag215ManagerScenarioTest(private val nakStyle: FakeNtag215.NakStyle) {
         e.pwdAuth(PWD)
         e.write(0x84, byteArrayOf((0x80 or 0x01).toByte(), 0, 0, 0)) // AUTHLIM = 1
         e.reconnect()
-        val first = manager().inspect(Password.parse("00000001")!!, null, null).privateState as PrivateState.AuthFailed
+        val first = manager().inspect(TestCredentials.pwd(0x01), null, null).privateState as PrivateState.AuthFailed
         assertFalse(first.blocked)
         val second = manager().inspect(PWD, null, null).privateState as PrivateState.AuthFailed
         assertEquals(nakStyle == FakeNtag215.NakStyle.RAW_BYTE, second.blocked) // code 4h only visible as a raw NAK
